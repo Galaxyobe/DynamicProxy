@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 
-# Configure SQLite
+# Configure Redis
 
-SQLITE_DATABASE = '../db/proxyip.db'
-SQLITE_TABLE = 'source'
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+
+REDIS_ITEMS_KEY = 'proxy:items'
+REDIS_PASS_ITEMS_KEY = 'proxy_pass:items'
 
 # Configure RPC
 
-SERVER_IP = '127.0.0.1'
-CLIENT_IP = '127.0.0.1'
-PORT = 4242
+RPC_SERVER_IP = '127.0.0.1'
+RPC_CLIENT_IP = '127.0.0.1'
+RPC_PORT = 4242
 
 # Configure Threadpool
 
@@ -25,10 +28,11 @@ RETRY_TIMES = 8
 
 # Configure Proxy can use live level
 
+# 可使用代理的等级
 LIVE_LEVEL = 4
 
 # 维持等级为LIVE_LEVEL的代理数量
-LIVE_PID_COUNT = 100
+LIVE_PID_COUNT = 200
 
 # Configure Scrapy
 

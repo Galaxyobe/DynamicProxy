@@ -5,81 +5,90 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
 
-import time
-import logging
-import sqlite3
+from scrapy.utils.misc import load_object
+from scrapy.utils.serialize import ScrapyJSONEncoder
+from twisted.internet.threads import deferToThread
+from scrapy_redis import connection, defaults
+from rpc.rpc import RPCClient
+
+default_serialize = ScrapyJSONEncoder().encode
+""" ProxyPipeline """
 
 
 class ProxyPipeline(object):
     def process_item(self, item, spider):
-        item["crawled"] = time.strftime('%Y-%m-%d %H:%M')
         return item
 
 
-class SQLitePipeline(object):
-    def __init__(self, sqlite_db, sqlite_table):
-        self.sqlite_db = sqlite_db
-        self.sqlite_table = sqlite_table
-        self.logger = logging.getLogger(__name__)
+""" Redis Pipeline """
 
-    def drop_table(self):
-        # drop table if it exists
-        self.cur.execute("DROP TABLE IF EXISTS %s" % self.sqlite_table)
 
-    def create_table(self):
-        self.cur.execute("CREATE TABLE IF NOT EXISTS %s( \
-                            id INTEGER PRIMARY KEY AUTOINCREMENT, \
-                            ip TEXT NOT NULL, \
-                            port TEXT NOT NULL, \
-                            anonymousp TEXT NOT NULL, \
-                            protocol TEXT NOT NULL, \
-                            crawled TEXT \
-                            )" % self.sqlite_table)
+class RedisPipeline(object):
+    """
+    Pushes serialized item into a redis set
 
-    def create_index(self):
-        try:
-            self.cur.execute("CREATE INDEX %s_index ON %s( \
-                                id, \
-                                ip, \
-                                port, \
-                                anonymousp, \
-                                protocol, \
-                                crawled \
-                                )" % (self.sqlite_table, self.sqlite_table))
-        except Exception, ex:
-            self.logger.debug("%s:%s" % (Exception, ex))
+    Settings
+    --------
+    REDIS_ITEMS_KEY : str
+        Redis key where to store items.
+    REDIS_ITEMS_SERIALIZER : str
+        Object path to serializer function.
+
+    """
+
+    def __init__(self,
+                 server,
+                 key=defaults.PIPELINE_KEY,
+                 serialize_func=default_serialize):
+        """
+        Initialize pipeline.
+
+        Parameters
+        ----------
+        server : StrictRedis
+            Redis client instance.
+        key : str
+            Redis key where to store items.
+        serialize_func : callable
+            Items serializer function.
+
+        """
+        self.server = server
+        self.key = key
+        self.serialize = serialize_func
+
+    @classmethod
+    def from_settings(cls, settings):
+        params = {
+            'server': connection.from_settings(settings),
+        }
+        if settings.get('REDIS_ITEMS_KEY'):
+            params['key'] = settings['REDIS_ITEMS_KEY']
+        if settings.get('REDIS_ITEMS_SERIALIZER'):
+            params['serialize_func'] = load_object(
+                settings['REDIS_ITEMS_SERIALIZER'])
+
+        return cls(**params)
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(sqlite_db=crawler.settings.get('SQLITE_DATABASE'),
-                   sqlite_table=crawler.settings.get('SQLITE_TABLE', 'items'))
-
-    def open_spider(self, spider):
-        self.conn = sqlite3.connect(self.sqlite_db)
-        self.cur = self.conn.cursor()
-        self.create_table()
-        self.create_index()
-
-    def close_spider(self, spider):
-        self.conn.close()
+        return cls.from_settings(crawler.settings)
 
     def process_item(self, item, spider):
-        self.cur.execute("SELECT ip,port,anonymousp,protocol FROM %s \
-                                WHERE ip LIKE ? \
-                                AND port LIKE ? \
-                                AND anonymousp LIKE ? \
-                                AND protocol LIKE ?" % self.sqlite_table, (
-            item['ip'], item['port'], item['anonymousp'], item['protocol']))
+        return deferToThread(self._process_item, item, spider)
 
-        result = self.cur.fetchone()
-        if result:
-            self.logger.debug("Item already stored in db: %s" % item)
-        else:
-            self.cur.execute(
-                "INSERT INTO %s (ip, port, anonymousp, protocol, crawled) "
-                "VALUES (?, ?, ?, ?, ?)" % self.sqlite_table,
-                (item['ip'], item['port'], item['anonymousp'],
-                 item['protocol'], item['crawled']))
-            self.conn.commit()
-            self.logger.debug("Item stored in db: %s" % item)
+    def _process_item(self, item, spider):
+        key = self.item_key(item, spider)
+        data = self.serialize(item)
+        self.server.sadd(key, data)
         return item
+
+    def item_key(self, item, spider):
+        """
+        Returns redis key based on given spider.
+
+        Override this function to use a different key depending on the item
+        and/or spider.
+
+        """
+        return self.key % {'spider': spider.name}

@@ -16,10 +16,19 @@ BOT_NAME = 'proxy'
 
 LOG_LEVEL = 'INFO'
 
-# Configure SQLite
+# Configure Redis
+# Specify the host and port to use when connecting to Redis (optional).
 
-SQLITE_DATABASE = 'db/proxyip.db'
-SQLITE_TABLE = 'source'
+# REDIS_HOST = 'localhost'
+# REDIS_PORT = 6379
+
+REDIS_ITEMS_KEY = 'proxy:items'
+
+# Configure RPC
+
+RPC_SERVER_IP = '127.0.0.1'
+RPC_CLIENT_IP = '127.0.0.1'
+RPC_PORT = 4242
 
 # Configure CronTab Task
 
@@ -78,14 +87,18 @@ DOWNLOADER_MIDDLEWARES = {
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
 EXTENSIONS = {
     'scrapy.extensions.telnet.TelnetConsole': None,
-    'proxy.extensions.EngineStartedAndStopped': 500,
+    'proxy.extensions.Extensions': 500,
+    # 'proxy.extensions.ItemScrapedAndDropped': 500,
+    # 'proxy.extensions.SpiderOpenAndClose': 501,
+    # 'proxy.extensions.EngineStartedAndStopped': 502,
 }
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     'proxy.pipelines.ProxyPipeline': 300,
-    'proxy.pipelines.SQLitePipeline': 400,
+    # 'proxy.pipelines.SQLitePipeline': 400,
+    'proxy.pipelines.RedisPipeline': 400,
 }
 
 # Configure feed exporters
