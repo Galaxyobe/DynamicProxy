@@ -32,7 +32,7 @@ RETRY_TIMES = 8
 LIVE_LEVEL = 4
 
 # 维持等级为LIVE_LEVEL的代理数量
-LIVE_PID_COUNT = 200
+LIVE_PID_COUNT = 100
 
 # Configure Scrapy
 
